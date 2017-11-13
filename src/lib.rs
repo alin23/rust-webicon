@@ -1,8 +1,8 @@
 // DOCS
 
 #[macro_use] extern crate error_chain;
-#[macro_use] extern crate html5ever_atoms;
 extern crate mime;
+extern crate hyper;
 extern crate reqwest;
 extern crate url;
 extern crate kuchiki;
@@ -17,7 +17,7 @@ use errors::*;
 
 use kuchiki::parse_html;
 
-use reqwest::IntoUrl;
+use reqwest::header::ContentType;
 
 use image::GenericImage;
 use strategies::Strategy;
@@ -30,26 +30,25 @@ pub struct IconScraper {
 }
 
 impl IconScraper {
-    pub fn from_http<I: IntoUrl>(url: I) -> Self {
+    pub fn from_http(url: &str) -> Self {
         use html5ever::driver::BytesOpts;
         use html5ever::encoding::label::encoding_from_whatwg_label;
         use html5ever::tendril::TendrilSink;
 
-        let url = url.into_url().unwrap();
-        let dom = reqwest::get(url.clone())
+        let dom = reqwest::get(url)
             .ok()
             .and_then(|mut response| {
                 let parser = parse_html();
                 let opts = BytesOpts {
-                    transport_layer_encoding: response.headers().get::<reqwest::header::ContentType>()
-                        .and_then(|content_type| content_type.get_param(mime::Attr::Charset))
-                        .and_then(|charset| encoding_from_whatwg_label(charset))
+                    transport_layer_encoding: response.headers().get::<ContentType>()
+                        .and_then(|content_type| content_type.get_param(mime::CHARSET))
+                        .and_then(|charset| encoding_from_whatwg_label(charset.as_str()))
                 };
                 parser.from_bytes(opts).read_from(&mut response).ok()
             });
 
         IconScraper {
-            document_url: url,
+            document_url: url::Url::parse(url).expect(&format!("Error on parsing url: {}", &url)),
             dom: dom
         }
     }
@@ -136,14 +135,17 @@ impl Icon {
             return Ok(());
         };
 
-        let mut response = try!(reqwest::get(self.url.clone()));
+        if self.url.as_str().parse::<hyper::Uri>().is_err() {
+            return Err(ErrorKind::InvalidUri(self.url.clone()).into());
+        };
+        let mut response = reqwest::get(self.url.clone())?;
         let mut bytes: Vec<u8> = vec![];
-        try!(response.read_to_end(&mut bytes));
+        response.read_to_end(&mut bytes)?;
         if !response.status().is_success() {
             return Err(ErrorKind::BadStatusCode(response).into());
         }
 
-        let mime_type: mime::Mime = match response.headers().get::<reqwest::header::ContentType>().cloned() {
+        let mime_type: mime::Mime = match response.headers().get::<ContentType>().cloned() {
             Some(x) => x.0,
             None => return Err(ErrorKind::NoContentType(response).into())
         };
@@ -151,7 +153,7 @@ impl Icon {
             Some(x) => x,
             None => return Err(ErrorKind::BadContentType(response).into())
         };
-        let image = try!(image::load_from_memory_with_format(&bytes, image_format));
+        let image = image::load_from_memory_with_format(&bytes, image_format)?;
 
 
         self.width = Some(image.width());

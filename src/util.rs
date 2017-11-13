@@ -1,4 +1,6 @@
-use mime::{Mime, TopLevel, SubLevel};
+extern crate mime;
+
+use mime::Mime;
 use image;
 
 // XXX: Move into Piston?
@@ -8,13 +10,13 @@ pub trait AsImageFormat {
 
 impl AsImageFormat for Mime {
     fn parse_image_format(&self) -> Option<(Mime, image::ImageFormat)> {
-        Some(match *self {
-            Mime(TopLevel::Image, SubLevel::Png, _) => (self.clone(), image::ImageFormat::PNG),
-            Mime(TopLevel::Image, SubLevel::Jpeg, _) => (self.clone(), image::ImageFormat::JPEG),
-            Mime(TopLevel::Image, SubLevel::Gif, _) => (self.clone(), image::ImageFormat::GIF),
-            Mime(_, SubLevel::Ext(ref i), _) if i == "x-icon" || i == "vnd.microsoft.icon" => (
-                Mime(TopLevel::Image, SubLevel::Ext("x-icon".into()), vec![]),
-                image::ImageFormat::ICO
+        Some(match (self.type_(), self.subtype()) {
+            (mime::IMAGE, mime::PNG) => (self.clone(), image::ImageFormat::PNG),
+            (mime::IMAGE, mime::JPEG) => (self.clone(), image::ImageFormat::JPEG),
+            (mime::IMAGE, mime::GIF) => (self.clone(), image::ImageFormat::GIF),
+            (mime::IMAGE, s) if s == "x-icon" || s == "vnd.microsoft.icon" => (
+                "image/x-icon".parse::<mime::Mime>().unwrap(),
+                image::ImageFormat::ICO,
             ),
             _ => return None
         })

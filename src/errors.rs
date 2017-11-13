@@ -10,6 +10,10 @@ error_chain! {
     }
 
     errors {
+        InvalidUri(url: ::url::Url) {
+            description("URL doesn't parse to a valid URI")
+            display("URL doesn't parse to a valid URI: {}", &url)
+        }
         BadStatusCode(response: ::reqwest::Response) {
             description("Bad status code")
             display("Bad status code: {}", response.status())
